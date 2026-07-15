@@ -24,14 +24,14 @@ npm install lwa-credential-rotation-alert
 
 ## Does it check all stores?
 
-**Yes.** Point `createStore` at your model (e.g. `tbl_store_details`).
+**Yes.** Point `createStore` at your model (e.g. `amazon_store`).
 `getAllCredentials()` loads **every matching document**, and the monitor
 evaluates each store independently. New stores added later are picked up
 on the next cron run automatically.
 
 ---
 
-## OMS / `tbl_store_details` (MongoDB)
+## [your_project] / `amazon_store` (MongoDB)
 
 Your schema already has `client_id`, `client_secret`, `store_name`, etc.
 Add **one Date field** for the next client-secret deadline (name can differ):
@@ -40,11 +40,11 @@ Add **one Date field** for the next client-secret deadline (name can differ):
 client_secret_next_rotation_at: { type: Date }
 ```
 
-Wire the package once in your OMS app:
+Wire the package once in your [your_project] app:
 
 ```js
 const { RotationMonitor, createStore } = require('lwa-credential-rotation-alert');
-const StoreDetails = require('./models/storeDetails.model'); // tbl_store_details
+const StoreDetails = require('./models/storeDetails.model'); // amazon_store
 
 const store = createStore({
   model: StoreDetails,
@@ -78,7 +78,7 @@ const monitor = new RotationMonitor({
 monitor.start();
 ```
 
-Full copy-paste: `examples/oms-mongoose.js`.
+Full copy-paste: `examples/[your_project]-mongoose.js`.
 
 After you rotate a secret:
 
@@ -107,7 +107,7 @@ in Mongo is compared in absolute UTC time.
 
 ---
 
-## Recommended OMS monitor config
+## Recommended [your_project] monitor config
 
 ```js
 const monitor = new RotationMonitor({
@@ -121,7 +121,7 @@ const monitor = new RotationMonitor({
   // tracking
   trackClientSecret: true,
   trackRefreshToken: false,
-  projectName: 'OMS',
+  projectName: '[your_project]',
 
   // milestones + continuous window
   alertBeforeDays: 7,                    // every check while ≤ 7 days (or overdue)
