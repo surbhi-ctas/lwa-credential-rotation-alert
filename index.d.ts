@@ -121,6 +121,8 @@ declare module 'lwa-credential-rotation-alert' {
     email?: boolean | {
       to?: string;
       from?: string;
+      cc?: string;
+      bcc?: string;
       host?: string;
       port?: number;
       secure?: boolean;
