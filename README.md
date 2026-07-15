@@ -1,33 +1,16 @@
 # lwa-credential-rotation-alert
 
-Track Amazon **Login with Amazon (LWA)** credential rotation deadlines in
-**your own database** (any table name, any column names), across
-**all Amazon marketplaces / stores in a project**, and get
-**continuous alerts** (email, Slack, webhook, console) until you mark
-the credential as rotated.
+Track Amazon **LWA client-secret** rotation deadlines from **your own database**
+(any collection / table name), across **all stores** in a project, and get
+**alerts** (email, Slack, webhook, console) until you mark the credential rotated.
 
-| Credential | Amazon deadline | This package default |
+| Credential | Amazon deadline | Package default |
 |---|---|---|
-| LWA **client secret** | every **180 days** | alert starts `alertBeforeDays` before (default 2) |
-| **Refresh token** (public apps) | re-authorize every **365 days** | same |
+| LWA **client secret** | every **180 days** | alert from your **next rotation date** |
+| Refresh token | every **365 days** | **off** (optional opt-in) |
 
-> Rotating the client secret does **not** require sellers to re-authorize.
-> Refresh-token re-auth is a separate cycle. Both are tracked independently.
-
----
-
-## Is this useful?
-
-**Yes**, if you:
-
-- Run **multiple Node projects**, each with Amazon SP-API credentials
-- Have **multiple Amazon stores / marketplaces** (US, UK, IN, …) in one project
-- Use **different DB table names** per project
-- Want alerts that **keep firing** until someone actually rotates
-
-Amazon already emails you (~90 / ~30 days out). This package is for
-**your ops timeline** — e.g. start 2–7 days before, every day, into Slack/email
-your team already watches — and it reads dates from **your** DB.
+**You only need a next-rotation date.** `lastRotatedAt` is optional.
+Refresh-token tracking is off unless you enable it.
 
 ---
 
@@ -37,235 +20,157 @@ your team already watches — and it reads dates from **your** DB.
 npm install lwa-credential-rotation-alert
 ```
 
-Public package on npm — install works in any project, same as any other npm package.
+---
 
-`nodemailer` is included — you do **not** need to install it separately.
-Turn email on/off per project with `email: true` / `email: false`.
+## Does it check all stores?
+
+**Yes.** Point `createStore` at your model (e.g. `tbl_store_details`).
+`getAllCredentials()` loads **every matching document**, and the monitor
+evaluates each store independently. New stores added later are picked up
+on the next cron run automatically.
 
 ---
 
-## How it works
+## OMS / `tbl_store_details` (MongoDB)
 
-1. Add rotation **date fields** to whatever table already holds your Amazon credentials.
-2. Wrap that model with **`createStore({ model, fields? })`** — works with any table name.
-3. Start **`RotationMonitor`** once in the app. It cron-checks all rows (all stores)
-   and alerts via email / Slack / webhook / console until you mark rotated.
-   Use `email: true` or `email: false` — nodemailer is already inside the package.
+Your schema already has `client_id`, `client_secret`, `store_name`, etc.
+Add **one Date field** for the next client-secret deadline (name can differ):
 
----
+```js
+client_secret_next_rotation_at: { type: Date }
+```
 
-## 1. Rotation fields to add (any table)
-
-Add these columns to your existing credentials table (names can differ — map them later):
-
-| Field | Purpose |
-|---|---|
-| `lastClientSecretRotatedAt` | when you last rotated the LWA secret |
-| `nextClientSecretRotationAt` | deadline (= last + 180 days, auto-computed) |
-| `clientSecretRotationIntervalDays` | default `180` |
-| `lastRefreshTokenRotatedAt` | when seller last re-authorized |
-| `nextRefreshTokenRotationAt` | deadline (= last + 365 days) |
-| `refreshTokenRotationIntervalDays` | default `365` |
-| `marketplace` | `US` / `UK` / `IN` / … — **one row per Amazon store** |
-| `projectName` | optional, shows up in alerts |
-
-Copy-paste schemas: `examples/mongoose.model.js`, `examples/sequelize.model.js`.
-
----
-
-## 2. Wire the monitor (once per project)
+Wire the package once in your OMS app:
 
 ```js
 const { RotationMonitor, createStore } = require('lwa-credential-rotation-alert');
-const { AmazonCred } = require('./models/AmazonCred'); // YOUR model / table
+const StoreDetails = require('./models/storeDetails.model'); // tbl_store_details
 
-const store = createStore({ model: AmazonCred });
+const store = createStore({
+  model: StoreDetails,
+  filter: { status: 1, is_amazon_store: true }, // all active Amazon stores
+  fields: {
+    id: '_id',
+    label: 'store_name',
+    marketplace: 'marketplace_id',
+    clientId: 'client_id',
+    clientSecret: 'client_secret',
+    nextClientSecretRotationAt: 'client_secret_next_rotation_at', // YOUR column
+    // not used — disable so package never asks for them:
+    lastClientSecretRotatedAt: false,
+    lastRefreshTokenRotatedAt: false,
+    nextRefreshTokenRotationAt: false,
+    projectName: false
+  }
+});
 
 const monitor = new RotationMonitor({
   store,
-  alertBeforeDays: 2,
-  cronExpression: '0 9 * * *',
-  timezone: 'Asia/Kolkata',
-  runOnStart: true,
-
-  email: true,   // ← true = send email, false = no email
-  console: true,
-  // slackWebhook: process.env.LWA_ALERT_SLACK_WEBHOOK,
+  alertBeforeDays: 7,              // email when ≤ 7 days left
+  cronExpression: '0 9,21 * * *',  // 2× per day
+  timezone: 'Asia/Kolkata',        // cron clock timezone
+  trackClientSecret: true,
+  trackRefreshToken: false,        // secret only
+  email: true,
+  console: true
 });
 
 monitor.start();
 ```
 
-Env when `email: true`:
+Full copy-paste: `examples/oms-mongoose.js`.
 
-```bash
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_USER=...
-SMTP_PASS=...
-LWA_ALERT_EMAIL_FROM=alerts@yourcompany.com
-LWA_ALERT_EMAIL_TO=ops@yourcompany.com
-```
-
-Or pass SMTP inline:
+After you rotate a secret:
 
 ```js
-email: {
-  to: 'ops@yourcompany.com',
-  from: 'alerts@yourcompany.com',
-  host: 'smtp.example.com',
-  port: 587,
-  auth: { user: '...', pass: '...' }
-}
-```
-
-In `app.js` / `server.js`:
-
-```js
-require('./monitor/lwaRotationMonitor');
-```
-
----
-
-## 3. Different table names & column names
-
-**Different table per project** — just pass that project's model:
-
-```js
-// Project A
-createStore({ model: ProjectAAmazonCred }); // collection/table: project_a_creds
-
-// Project B
-createStore({ model: ProjectBSellerCred }); // collection/table: seller_tokens
-```
-
-**Different column names** — map them:
-
-```js
-const store = createStore({
-  model: MyExistingModel,
-  fields: {
-    marketplace: 'region_code',
-    projectName: 'app_name',
-    lastClientSecretRotatedAt: 'secret_rotated_at',
-    nextClientSecretRotationAt: 'secret_due_at',
-    lastRefreshTokenRotatedAt: 'token_rotated_at',
-    nextRefreshTokenRotationAt: 'token_due_at'
-  }
+await store.markClientSecretRotated(storeId, {
+  newClientSecret: 'amzn.secret...',
+  intervalDays: 180   // sets next = now + 180 days
 });
 ```
 
-See `examples/custom-fields.js`.
+---
+
+## How alerts work (next date only)
+
+```
+DB: client_secret_next_rotation_at = 2026-07-20
+
+Today 2026-07-13, alertBeforeDays=7  →  alert (7 days left)
+Today 2026-07-19                     →  alert (1 day left)
+Today 2026-07-21                     →  OVERDUE alert
+... keeps alerting each cron run until markClientSecretRotated()
+```
+
+Cron timezone (`Asia/Kolkata`) only controls **when** checks run — the Date
+in Mongo is compared in absolute UTC time.
 
 ---
 
-## Multi-store (multiple Amazon marketplaces)
-
-One row per store/marketplace. `getAllCredentials()` returns all of them;
-the monitor evaluates each independently:
-
-```
-projectName: SellerHub, marketplace: US  → own rotation dates
-projectName: SellerHub, marketplace: UK  → own rotation dates
-projectName: SellerHub, marketplace: IN  → own rotation dates
-```
-
-Only stores inside the alert window trigger alerts.
-
----
-
-## Continuous alerting until rotated
-
-```
-Day -2: alert
-Day -1: alert again
-Day  0: OVERDUE alert
-Day +1: still alerting
-... await store.markClientSecretRotated(id, { newClientSecret: '...' })
-... next check: silent (deadline pushed +180 days)
-```
+## Recommended OMS monitor config
 
 ```js
-await store.markClientSecretRotated(id, { newClientSecret: 'amzn.secret...' });
-await store.markRefreshTokenRotated(id, { newRefreshToken: 'Atzr|...' });
-```
-
----
-
-## Alert channels
-
-```js
-// Built into RotationMonitor — no custom onAlert needed:
-new RotationMonitor({
+const monitor = new RotationMonitor({
   store,
-  email: true,                          // or false
+
+  // schedule
+  cronExpression: '0 9,21 * * *',
+  timezone: 'Asia/Kolkata',
+  runOnStart: true,
+
+  // tracking
+  trackClientSecret: true,
+  trackRefreshToken: false,
+  projectName: 'OMS',
+
+  // milestones + continuous window
+  alertBeforeDays: 7,                    // every check while ≤ 7 days (or overdue)
+  alertMilestones: [30, 14, 7, 3, 1],     // also fire on these exact days-left
+
+  // noise control
+  minRepeatHours: 12,                    // don't re-spam same store within 12h
+  warnMissingNextDate: true,
+
+  // channels
+  email: true,
   console: true,
-  slackWebhook: 'https://hooks.slack.com/...',
-  webhookUrl: 'https://your-hook.example.com'
+
+  // ops
+  enabled: true,
+  dryRun: false,                         // true = check only, no email
+  onCheckComplete: (summary) => console.log(summary)
 });
 
-// Or use helpers manually:
-const { alerts } = require('lwa-credential-rotation-alert');
-await alerts.sendAlerts({ email: true, console: true }, evaluation);
-await alerts.emailAlert(smtpOptions, { from, to }, evaluation);
-await alerts.slackAlert(webhookUrl, evaluation);
+monitor.start();
+await monitor.checkNow(); // manual anytime
 ```
 
-`onAlert` receives:
-
-```js
-{
-  credentialId: '…',
-  projectName: 'SellerHub',
-  marketplace: 'US',
-  label: 'SellerHub - US',
-  shouldAlert: true,
-  checks: [
-    { type: 'CLIENT_SECRET', dueDate, daysLeft, overdue, shouldAlert },
-    { type: 'REFRESH_TOKEN', dueDate, daysLeft, overdue, shouldAlert }
-  ]
-}
-```
-
----
-
-## API
-
-| Export | Description |
-|---|---|
-| `createStore({ model, fields? })` | Wrap any Mongoose/Sequelize model (any table name) |
-| `new RotationMonitor({ ... })` | Cron checker — see options below |
-| `MemoryStore` | In-memory store for tests |
-| `computeNextRotation(lastRotatedAt, intervalDays)` | `Date` |
-| `daysUntil(date)` | number (negative if overdue) |
-| `evaluateCredential(credential, alertBeforeDays)` | evaluation object |
-| `DEFAULTS.CLIENT_SECRET_ROTATION_DAYS` | `180` |
-| `DEFAULTS.REFRESH_TOKEN_ROTATION_DAYS` | `365` |
-| `alerts.*` | email / Slack / webhook / console / `sendAlerts` |
-
-### `RotationMonitor` options
+### Parameters
 
 | option | default | description |
 |---|---|---|
-| `store` | required | your adapter from `createStore` |
-| `alertBeforeDays` | `2` | start alerting this many days before deadline |
+| `store` | required | from `createStore` |
+| `alertBeforeDays` | `7` | continuous alerts when days left ≤ this |
+| `alertMilestones` | `[30,14,7,3,1]` | also alert on these exact days-left |
 | `cronExpression` | `'0 9 * * *'` | when to check |
 | `timezone` | — | e.g. `'Asia/Kolkata'` |
 | `runOnStart` | `true` | check once on boot |
-| `email` | `false` | `true` / `false` / `{ to, from, host, port, auth }` — nodemailer included |
-| `console` | `true` | log alerts to console |
-| `slackWebhook` | — | Slack incoming webhook URL |
-| `webhookUrl` | — | generic POST webhook |
-| `onAlert` | — | optional custom handler (overrides built-in channels if set) |
-
-Methods on a store: `.getAllCredentials()`, `.getCredential(id)`, `.saveCredential(data)`,
-`.markClientSecretRotated(id, opts)`, `.markRefreshTokenRotated(id, opts)`.
-
-Manual check: `await monitor.checkNow()`.
+| `trackClientSecret` | `true` | client-secret alerts |
+| `trackRefreshToken` | `false` | refresh-token alerts |
+| `projectName` | — | shown in emails when store has none |
+| `minRepeatHours` | `0` | dedupe window (severity escalation still sends) |
+| `warnMissingNextDate` | `true` | log stores with no next date |
+| `email` | `false` | `true` / `false` / SMTP config |
+| `console` | `true` | log alerts |
+| `slackWebhook` / `webhookUrl` | — | optional channels |
+| `enabled` | `true` | master switch |
+| `dryRun` | `false` | evaluate but do not send |
+| `onAlert` | — | custom alert handler |
+| `onCheckComplete` | — | `(summary, results)` after each run |
 
 ---
 
-## Quick local test (no DB)
+## Quick local test
 
 ```js
 const { RotationMonitor, MemoryStore } = require('lwa-credential-rotation-alert');
@@ -273,15 +178,14 @@ const { RotationMonitor, MemoryStore } = require('lwa-credential-rotation-alert'
 const store = new MemoryStore();
 await store.saveCredential({
   id: 'us-1',
-  projectName: 'Demo',
-  marketplace: 'US',
-  lastClientSecretRotatedAt: new Date(Date.now() - 179 * 24 * 60 * 60 * 1000)
+  label: 'US',
+  nextClientSecretRotationAt: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000)
 });
 
 const monitor = new RotationMonitor({
   store,
   runOnStart: false,
-  email: false,   // no SMTP needed for local test
+  email: false,
   console: true
 });
 
@@ -294,10 +198,8 @@ npm test
 
 ---
 
-## Notes (Amazon SP-API)
+## Notes
 
-- Client secret rotation is mandatory every 180 days; Amazon notifies ~90 days prior.
-- Old secret may keep working up to ~7 days after you rotate.
-- Missing the deadline blocks SP-API calls for that application.
-- This package does **not** call Amazon — it only tracks dates in your DB and alerts.
-  Pair with Amazon's rotate-client-secret API if you want to automate rotation itself.
+- This package does **not** call Amazon — it reads your next dates and alerts.
+- Missing the LWA client-secret deadline can block SP-API for that app/store.
+- Old secret may keep working ~7 days after you rotate in Seller Central.
