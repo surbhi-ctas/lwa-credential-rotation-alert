@@ -48,20 +48,20 @@ const monitor = new RotationMonitor({
     }
 
     // Email (requires: npm install nodemailer)
-    if (process.env.LWA_ALERT_EMAIL_TO) {
+    if (process.env.MAIL_TO) {
       await alerts.emailAlert(
         {
           host: process.env.SMTP_HOST,
           port: Number(process.env.SMTP_PORT || 587),
           secure: process.env.SMTP_SECURE === 'true',
           auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS
+            user: process.env.SMTP_USERNAME,
+            pass: process.env.SMTP_PASSWORD
           }
         },
         {
-          from: process.env.LWA_ALERT_EMAIL_FROM || process.env.SMTP_USER,
-          to: process.env.LWA_ALERT_EMAIL_TO
+          from: process.env.EMAIL_FROM || process.env.SMTP_USERNAME,
+          to: process.env.MAIL_TO
         },
         evaluation
       );
@@ -73,7 +73,7 @@ const monitor = new RotationMonitor({
     //   slackWebhook: process.env.LWA_ALERT_SLACK_WEBHOOK,
     //   email: {
     //     transporterOptions: { host: process.env.SMTP_HOST, port: 587, auth: { user, pass } },
-    //     mailOptions: { from, to: process.env.LWA_ALERT_EMAIL_TO }
+    //     mailOptions: { from, to: process.env.MAIL_TO }
     //   }
     // }, evaluation);
   }
