@@ -1,0 +1,47 @@
+{
+  "name": "lwa-credential-rotation-alert",
+  "version": "1.2.0",
+  "description": "Track Amazon LWA client-secret rotation (180 days) and refresh-token re-authorization (365 days) across all your projects and marketplaces. Continuous alerts (email, Slack, webhook) until you mark the credential as rotated. Works with any table name and custom column mapping. Nodemailer included — toggle email true/false per project.",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "lib",
+    "examples",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node test/basic.test.js",
+    "prepublishOnly": "npm test"
+  },
+  "keywords": [
+    "amazon",
+    "lwa",
+    "login-with-amazon",
+    "sp-api",
+    "selling-partner-api",
+    "credential-rotation",
+    "client-secret",
+    "refresh-token",
+    "alert",
+    "email",
+    "slack",
+    "cron",
+    "expiration"
+  ],
+  "author": "ctas54",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "axios": "^1.7.4",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.16"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}
