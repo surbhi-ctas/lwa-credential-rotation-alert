@@ -1,6 +1,6 @@
 {
   "name": "lwa-credential-rotation-alert",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Track Amazon LWA client-secret rotation (180 days) and refresh-token re-authorization (365 days) across all your projects and marketplaces. Continuous alerts (email, Slack, webhook) until you mark the credential as rotated. Works with any table name and custom column mapping. Nodemailer included — toggle email true/false per project.",
   "main": "index.js",
   "types": "index.d.ts",
@@ -33,6 +33,14 @@
   ],
   "author": "ctas54",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/surbhi-ctas/lwa-credential-rotation-alert.git"
+  },
+  "bugs": {
+    "url": "https://github.com/surbhi-ctas/lwa-credential-rotation-alert/issues"
+  },
+  "homepage": "https://github.com/surbhi-ctas/lwa-credential-rotation-alert#readme",
   "publishConfig": {
     "access": "public"
   },
