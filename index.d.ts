@@ -117,6 +117,7 @@ declare module 'lwa-credential-rotation-alert' {
     /** Suppress repeat alerts for same store within N hours (unless severity worsens) */
     minRepeatHours?: number;
     warnMissingNextDate?: boolean;
+    /** Shown in email/console; defaults to LWA_PROJECT_NAME / COMPANY_NAME / PROJECT_NAME env */
     projectName?: string;
     email?: boolean | {
       to?: string;

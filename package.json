@@ -1,6 +1,6 @@
 {
   "name": "lwa-credential-rotation-alert",
-  "version": "1.4.5",
+  "version": "1.4.7",
   "description": "Track Amazon LWA client-secret next-rotation dates across all stores. Milestone + continuous alerts (email/Slack/webhook). Works with any table/columns. Nodemailer included.",
   "main": "index.js",
   "types": "index.d.ts",

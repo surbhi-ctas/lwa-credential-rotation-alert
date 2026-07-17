@@ -5,6 +5,9 @@
  *
  * REQUIRED in schema (add if missing):
  *   client_secret_next_rotation_at: { type: Date }
+ *
+ * Project name in emails/alerts comes from (first match):
+ *   RotationMonitor projectName → LWA_PROJECT_NAME → COMPANY_NAME → PROJECT_NAME
  */
 
 const {
@@ -16,10 +19,10 @@ const {
 
 // const StoreDetails = require('../models/storeDetails.model');
 
-function startOmsLwaMonitor(StoreDetails) {
+function startOmsLwaMonitor(StoreDetails, options = {}) {
   const store = createStore({
     model: StoreDetails,
-    filter: { status: 1, is_amazon_store: true },
+    filter: options.filter || { status: 1, is_amazon_store: true },
     fields: {
       id: '_id',
       label: 'store_name',
@@ -40,44 +43,37 @@ function startOmsLwaMonitor(StoreDetails) {
   const monitor = new RotationMonitor({
     store,
 
-    // --- scheduling ---
-    cronExpression: '0 9,21 * * *', // 2× / day
-    timezone: 'Asia/Kolkata',
-    runOnStart: true, // check immediately on boot
+    // dynamic project name — shows in email subject/body
+    // uses options.projectName, or env COMPANY_NAME (OMS already has this)
+    projectName:
+      options.projectName ||
+      process.env.LWA_PROJECT_NAME ||
+      process.env.COMPANY_NAME ||
+      process.env.PROJECT_NAME,
 
-    // --- what to track ---
+    cronExpression: options.cronExpression || '0 9 * * *',
+    timezone: options.timezone || 'Asia/Kolkata',
+    runOnStart: options.runOnStart !== false,
+
     trackClientSecret: true,
     trackRefreshToken: false,
-    projectName: 'OMS',
 
-    // --- when to alert ---
-    alertBeforeDays: 7, // continuous while ≤ 7 days left (or overdue)
-    alertMilestones: DEFAULT_ALERT_MILESTONES, // also fire on day 30, 14, 7, 3, 1
-    // alertMilestones: [30, 14, 7, 3, 1],
+    alertBeforeDays: options.alertBeforeDays ?? 7,
+    alertMilestones: options.alertMilestones ?? DEFAULT_ALERT_MILESTONES,
+    minRepeatHours: options.minRepeatHours ?? 12,
+    warnMissingNextDate: options.warnMissingNextDate !== false,
 
-    // --- noise control ---
-    minRepeatHours: 12, // don't re-email same store within 12h (unless severity worsens)
-    warnMissingNextDate: true, // log stores with no next date
+    email: options.email !== false,
+    console: options.console !== false,
 
-    // --- channels ---
-    email: true,
-    console: true,
-    // slackWebhook: process.env.LWA_ALERT_SLACK_WEBHOOK,
-
-    // --- safety / ops ---
-    enabled: true,
-    dryRun: false, // true = evaluate only, no email/slack
-    onCheckComplete: (summary) => {
-      console.log('[LWA rotation check]', summary);
-      // summary = { total, alerting, alerted, skippedDedupe, missingNextDate, dryRun }
-    }
+    enabled: options.enabled !== false,
+    dryRun: Boolean(options.dryRun),
+    onCheckComplete: options.onCheckComplete || ((summary) => {
+      console.log(`[LWA ${process.env.COMPANY_NAME || 'OMS'}]`, summary);
+    })
   });
 
   monitor.start();
-
-  // Manual check anytime (e.g. admin API):
-  // await monitor.checkNow();
-
   return { store, monitor };
 }
 
